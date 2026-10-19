@@ -60,6 +60,8 @@
     },
     "exclude": [
         "vendor",
+        "tmp",
+        "dist",
         "node_modules",
         "workbench/vendor",
         "workbench/node_modules",

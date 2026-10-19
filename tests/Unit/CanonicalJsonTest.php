@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Wtroiano\BoundedJson\Options\JsonLimits;
 use Wtroiano\BoundedJson\Support\CanonicalJson;
 
 test('canonicalizes the safe-range RFC 8785 example values without rounding numbers', function (): void {
@@ -37,6 +38,27 @@ test('rejects unsafe integers and nonfinite numbers', function (): void {
     expect(fn (): mixed => $canonical->decode('{"id":9007199254740992}'))->toThrow(InvalidArgumentException::class);
     expect(fn (): mixed => $canonical->decode('{"id":9223372036854775808}'))->toThrow(InvalidArgumentException::class);
     expect(fn (): string => $canonical->encode(INF))->toThrow(InvalidArgumentException::class);
+});
+
+test('checks duplicate keys after long strings without exhausting the regex stack', function (string $unit): void {
+    $canonical = new CanonicalJson;
+    $string = '"'.str_repeat($unit, 30000).'"';
+
+    expect($canonical->decodeObject('{"pad":'.$string.',"a":1}')->a)->toBe(1);
+    expect(fn () => $canonical->decode('{"pad":'.$string.',"a":1,"\\u0061":2}'))
+        ->toThrow(InvalidArgumentException::class, 'Duplicate JSON object key: a');
+})->with(['plain' => 'a', 'escaped' => '\\n', 'unicode escape' => '\\u0061', 'multibyte' => '😀']);
+
+test('rejects JSON when token validation cannot complete', function (): void {
+    $previous = ini_get('pcre.backtrack_limit');
+    ini_set('pcre.backtrack_limit', '0');
+
+    try {
+        expect(fn () => (new CanonicalJson)->decode('{"a":1,"a":2}'))
+            ->toThrow(InvalidArgumentException::class, 'JSON token validation failed:');
+    } finally {
+        ini_set('pcre.backtrack_limit', $previous);
+    }
 });
 
 test('bounds payload bytes independently of Unicode character count', function (): void {
@@ -80,4 +102,47 @@ test('rejects malformed JSON invalid Unicode and non JSON objects', function ():
     expect(fn (): string => $canonical->encode("\xB1"))->toThrow(InvalidArgumentException::class, 'Invalid Unicode');
     expect(fn (): string => $canonical->encode(new DateTimeImmutable))->toThrow(InvalidArgumentException::class, 'Only JSON values');
     expect(fn (): stdClass => $canonical->decodeObject('[]'))->toThrow(InvalidArgumentException::class, 'Expected a JSON object');
+});
+
+test('enforces custom byte limits on input and canonical output', function (): void {
+    $json = new CanonicalJson(new JsonLimits(maxBytes: 6));
+
+    expect($json->encode('😀'))->toBe('"😀"')
+        ->and($json->decode('"😀"'))->toBe('😀');
+    expect(fn () => $json->encode('😀x'))->toThrow(InvalidArgumentException::class, '6 byte');
+    expect(fn () => $json->decode(' "😀"'))->toThrow(InvalidArgumentException::class, '6 byte');
+    expect(fn () => $json->hash('😀x'))->toThrow(InvalidArgumentException::class, '6 byte');
+    expect(fn () => $json->decode('1e-6'))->toThrow(InvalidArgumentException::class, '6 byte');
+});
+
+test('allows larger payloads through explicitly configured instances', function (): void {
+    $json = new CanonicalJson(new JsonLimits(maxBytes: 300000));
+    $value = str_repeat('a', 262144);
+
+    expect($json->decode($json->encode($value)))->toBe($value);
+    expect(fn () => (new CanonicalJson)->encode($value))->toThrow(InvalidArgumentException::class);
+});
+
+test('uses the same value depth boundary when encoding and decoding', function (int $depth, string $valid, string $invalid): void {
+    $json = new CanonicalJson(new JsonLimits(maxDepth: $depth));
+
+    expect($json->encode($json->decode($valid)))->toBe($valid);
+    expect(fn () => $json->decode($invalid))->toThrow(InvalidArgumentException::class);
+    expect(fn () => $json->encode(json_decode($invalid, flags: JSON_THROW_ON_ERROR)))
+        ->toThrow(InvalidArgumentException::class, $depth.' levels');
+})->with([
+    'root scalar' => [0, '1', '[1]'],
+    'empty root array' => [0, '[]', '[[]]'],
+    'empty root object' => [0, '{}', '{"a":{}}'],
+    'nested scalar' => [1, '[1]', '[[1]]'],
+    'nested empty array' => [1, '[[]]', '[[[]]]'],
+    'nested empty object' => [1, '{"a":{}}', '{"a":{"b":{}}}'],
+]);
+
+test('allows JSON deeper than the former fixed limit', function (): void {
+    $json = new CanonicalJson(new JsonLimits(maxDepth: 65));
+    $document = str_repeat('[', 65).'0'.str_repeat(']', 65);
+
+    expect($json->encode($json->decode($document)))->toBe($document);
+    expect(fn () => (new CanonicalJson)->decode($document))->toThrow(InvalidArgumentException::class);
 });

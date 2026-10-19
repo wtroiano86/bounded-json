@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Wtroiano\BoundedJson\Exceptions\JsonValueInvalid;
+use Wtroiano\BoundedJson\Options\SchemaLimits;
 use Wtroiano\BoundedJson\Support\BoundedSchemaValidator;
 use Wtroiano\BoundedJson\Support\CanonicalJson;
 use Wtroiano\BoundedJson\Support\PayloadSerializer;
@@ -9,20 +11,17 @@ use Wtroiano\BoundedJson\Support\SchemaValueValidator;
 
 it('honors an explicit schema depth without an application container', function (): void {
     $schema = (new CanonicalJson)->decodeObject('{"type":"array","maxItems":1,"items":{"type":"boolean"}}');
-    $validator = new BoundedSchemaValidator(new CanonicalJson, new SchemaValueValidator, maxDepth: 0);
+    $validator = new BoundedSchemaValidator(new CanonicalJson, new SchemaValueValidator, new SchemaLimits(maxDepth: 0));
 
     expect(fn () => $validator->validateDefinition($schema))->toThrow(InvalidArgumentException::class);
-    (new BoundedSchemaValidator(new CanonicalJson, new SchemaValueValidator, maxDepth: 1))->validateValue($schema, [true]);
+    (new BoundedSchemaValidator(new CanonicalJson, new SchemaValueValidator, new SchemaLimits(maxDepth: 1)))->validateValue($schema, [true]);
 });
 
-it('keeps legacy exception catches and service type checks working', function (): void {
-    expect(new CanonicalJson)->toBeInstanceOf(Wtroiano\Helm\Support\Json\CanonicalJson::class);
-    try {
-        (new BoundedSchemaValidator(new CanonicalJson, new SchemaValueValidator))->validateValue((object) ['type' => 'boolean'], 'invalid');
-        $this->fail('Invalid values must fail.');
-    } catch (Wtroiano\Helm\Exceptions\JsonValueInvalid $exception) {
-        expect($exception)->toBeInstanceOf(Wtroiano\BoundedJson\Exceptions\JsonValueInvalid::class);
-    }
+it('throws a JSON value exception for values outside the schema', function (): void {
+    $validator = new BoundedSchemaValidator(new CanonicalJson, new SchemaValueValidator);
+
+    expect(fn () => $validator->validateValue((object) ['type' => 'boolean'], 'invalid'))
+        ->toThrow(JsonValueInvalid::class);
 });
 
 it('redacts secrets recursively while preserving ordinary payload values', function (): void {

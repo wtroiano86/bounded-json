@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace Wtroiano\BoundedJson\Support;
 
 use RuntimeException;
+use Wtroiano\BoundedJson\Options\SchemaLimits;
 
 final readonly class SchemaValueValidator
 {
     private const array Keywords = ['$schema', '$id', '$defs', 'definitions', '$ref', 'type', 'properties', 'required', 'additionalProperties', 'items', 'minItems', 'maxItems', 'uniqueItems', 'minProperties', 'maxProperties', 'minLength', 'maxLength', 'pattern', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf', 'enum', 'const', 'allOf', 'anyOf', 'oneOf', 'not', 'title', 'description', 'default', 'examples', 'deprecated', 'readOnly', 'writeOnly'];
+
+    public function __construct(private SchemaLimits $limits = new SchemaLimits) {}
 
     /** @param array<array-key, mixed> $schema */
     public function validate(array $schema, mixed $value): void
@@ -20,7 +23,7 @@ final readonly class SchemaValueValidator
     /** @param array<array-key, mixed> $root */
     private function definition(mixed $schema, array $root, int $depth): void
     {
-        throw_if($depth > 32, RuntimeException::class, 'Schema nesting exceeds supported limits.');
+        throw_if($depth > $this->limits->maxEvaluationDepth, RuntimeException::class, 'Schema nesting exceeds '.$this->limits->maxEvaluationDepth.' evaluation levels.');
 
         if (is_bool($schema)) {
             return;
@@ -28,7 +31,7 @@ final readonly class SchemaValueValidator
 
         $schema = $this->map($schema);
         foreach (array_keys($schema) as $key) {
-            throw_unless(in_array($key, self::Keywords, true), RuntimeException::class, 'The capability uses an unsupported schema keyword: '.$key.'.');
+            throw_unless(in_array($key, self::Keywords, true), RuntimeException::class, 'Unsupported schema keyword: '.$key.'.');
         }
 
         if (isset($schema['$ref'])) {
@@ -57,7 +60,8 @@ final readonly class SchemaValueValidator
     /** @param array<array-key, mixed> $root */
     private function check(mixed $schema, mixed $value, array $root, int $depth): void
     {
-        throw_if($depth > 32 || $schema === false, RuntimeException::class, 'Arguments do not match the capability schema.');
+        throw_if($depth > $this->limits->maxEvaluationDepth, RuntimeException::class, 'Value validation exceeds '.$this->limits->maxEvaluationDepth.' evaluation levels.');
+        $this->require($schema !== false);
 
         if ($schema === true) {
             return;
@@ -231,6 +235,6 @@ final readonly class SchemaValueValidator
 
     private function require(bool $condition): void
     {
-        throw_unless($condition, RuntimeException::class, 'Arguments do not match the capability schema.');
+        throw_unless($condition, RuntimeException::class, 'Value does not match the schema.');
     }
 }

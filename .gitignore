@@ -32,3 +32,5 @@
 /workbench/composer.local.lock
 /.rector-cache/
 /.phpstan-cache/
+/tmp/
+/dist/

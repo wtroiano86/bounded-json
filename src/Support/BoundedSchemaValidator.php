@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use RuntimeException;
 use stdClass;
 use Wtroiano\BoundedJson\Exceptions\JsonValueInvalid;
+use Wtroiano\BoundedJson\Options\SchemaLimits;
 
 final readonly class BoundedSchemaValidator
 {
@@ -18,7 +19,7 @@ final readonly class BoundedSchemaValidator
     public function __construct(
         private CanonicalJson $canonicalJson,
         private SchemaValueValidator $valueValidator,
-        private int $maxDepth = 16,
+        private SchemaLimits $limits = new SchemaLimits,
     ) {}
 
     public function validateDefinition(mixed $schema): void
@@ -46,7 +47,7 @@ final readonly class BoundedSchemaValidator
 
     private function definition(mixed $schema, int $depth): void
     {
-        throw_unless($schema instanceof stdClass && $depth <= $this->maxDepth, InvalidArgumentException::class, 'Schema must be an object with at most 16 nested levels.');
+        throw_unless($schema instanceof stdClass && $depth <= $this->limits->maxDepth, InvalidArgumentException::class, 'Schema must be an object with at most '.$this->limits->maxDepth.' nested levels.');
         $fields = JsonData::map($schema);
         throw_unless(array_key_exists('type', $fields), InvalidArgumentException::class, 'Schema type is required.');
 
@@ -102,16 +103,16 @@ final readonly class BoundedSchemaValidator
         if ($primary === 'array') {
             throw_unless(isset($fields['items']), InvalidArgumentException::class, 'Array schema requires items.');
             $this->definition($fields['items'], $depth + 1);
-            $this->boundedInteger($fields, 'maxItems', true);
-            $this->boundedInteger($fields, 'minItems');
+            $this->boundedInteger($fields, 'maxItems', $this->limits->maxArrayItems, true);
+            $this->boundedInteger($fields, 'minItems', $this->limits->maxArrayItems);
             $this->orderedBounds($fields, 'minItems', 'maxItems');
         } else {
             $this->forbid($fields, ['items', 'minItems', 'maxItems']);
         }
 
         if ($primary === 'string') {
-            $this->boundedInteger($fields, 'maxLength', true);
-            $this->boundedInteger($fields, 'minLength');
+            $this->boundedInteger($fields, 'maxLength', $this->limits->maxStringLength, true);
+            $this->boundedInteger($fields, 'minLength', $this->limits->maxStringLength);
             $this->orderedBounds($fields, 'minLength', 'maxLength');
         } else {
             $this->forbid($fields, ['minLength', 'maxLength']);
@@ -163,11 +164,11 @@ final readonly class BoundedSchemaValidator
     }
 
     /** @param array<string, mixed> $fields */
-    private function boundedInteger(array $fields, string $keyword, bool $required = false): void
+    private function boundedInteger(array $fields, string $keyword, int $maximum, bool $required = false): void
     {
         throw_unless(! $required || array_key_exists($keyword, $fields), InvalidArgumentException::class, 'Schema '.$keyword.' is required.');
         if (array_key_exists($keyword, $fields)) {
-            throw_unless(is_int($fields[$keyword]) && $fields[$keyword] >= 0 && $fields[$keyword] <= 10000, InvalidArgumentException::class, 'Schema '.$keyword.' must be a bounded nonnegative integer.');
+            throw_unless(is_int($fields[$keyword]) && $fields[$keyword] >= 0 && $fields[$keyword] <= $maximum, InvalidArgumentException::class, 'Schema '.$keyword.' must be an integer between 0 and '.$maximum.'.');
         }
     }
 

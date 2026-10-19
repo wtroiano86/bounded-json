@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Wtroiano\BoundedJson\Options\SchemaLimits;
 use Wtroiano\BoundedJson\Support\SchemaValueValidator;
 
 it('validates supported schema assertions and rejects values outside them', function (array $schema, string $valid, string $invalid): void {
@@ -42,4 +43,20 @@ it('compares native JSON object constants by their properties', function (): voi
     $schema = ['const' => (object) ['id' => 1]];
     (new SchemaValueValidator)->validate($schema, (object) ['id' => 1]);
     expect(fn () => (new SchemaValueValidator)->validate($schema, (object) ['id' => 2]))->toThrow(RuntimeException::class);
+});
+
+it('enforces configured evaluation depth for schema references', function (): void {
+    $schema = ['$defs' => ['number' => ['type' => 'integer']], '$ref' => '#/$defs/number'];
+    (new SchemaValueValidator(new SchemaLimits(maxEvaluationDepth: 1)))->validate($schema, 1);
+
+    expect(fn () => (new SchemaValueValidator(new SchemaLimits(maxEvaluationDepth: 0)))->validate($schema, 1))
+        ->toThrow(RuntimeException::class, '0 evaluation levels');
+});
+
+it('limits value traversal even when the schema permits any nested value', function (): void {
+    $validator = new SchemaValueValidator(new SchemaLimits(maxEvaluationDepth: 0));
+    $validator->validate([], true);
+
+    expect(fn () => $validator->validate([], [true]))
+        ->toThrow(RuntimeException::class, '0 evaluation levels');
 });

@@ -1,8 +1,15 @@
-name: Tests
-on: [push, pull_request]
+name: Package CI
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
 jobs:
-  test:
+  quality:
+    name: PHP 8.5 / ${{ matrix.dependencies }} dependencies
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dependencies: [lowest, latest]
     steps:
       - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
@@ -11,5 +18,36 @@ jobs:
           extensions: mbstring, zip
           tools: composer:v2
           coverage: pcov
-      - run: composer install --no-interaction --prefer-dist
-      - run: composer test
+      - run: composer validate --strict
+      - name: Verify tagged release metadata
+        if: startsWith(github.ref, 'refs/tags/')
+        run: composer test:release -- "$GITHUB_REF_NAME"
+      - name: Install latest supported dependencies
+        if: matrix.dependencies == 'latest'
+        run: composer update --no-interaction --prefer-dist --prefer-stable
+      - name: Install lowest supported dependencies
+        if: matrix.dependencies == 'lowest'
+        run: composer update --no-interaction --prefer-dist --prefer-stable --prefer-lowest
+      - name: Audit runtime dependencies
+        run: composer audit --locked --no-dev
+      - name: Check formatting, static analysis, types, and coverage
+        if: matrix.dependencies == 'latest'
+        run: composer test
+      - name: Check minimum-version behavior and coverage
+        if: matrix.dependencies == 'lowest'
+        run: |
+          composer test:type-coverage
+          composer test:coverage
+  distribution:
+    name: Install the archive in a clean Laravel application
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, zip
+          tools: composer:v2
+          coverage: none
+      - run: composer test:distribution

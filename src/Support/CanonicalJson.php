@@ -7,17 +7,21 @@ namespace Wtroiano\BoundedJson\Support;
 use InvalidArgumentException;
 use JsonException;
 use stdClass;
+use Wtroiano\BoundedJson\Options\JsonLimits;
 
 final readonly class CanonicalJson
 {
     private const int MaxSafeInteger = 9007199254740991;
 
+    public function __construct(private JsonLimits $limits = new JsonLimits) {}
+
     public function decode(string $json): mixed
     {
-        throw_if(mb_strlen($json, '8bit') > 262144, InvalidArgumentException::class, 'JSON exceeds the 256 KiB payload limit.');
+        throw_if(mb_strlen($json, '8bit') > $this->limits->maxBytes, InvalidArgumentException::class, 'JSON exceeds the '.$this->limits->maxBytes.' byte payload limit.');
 
         try {
-            $value = json_decode($json, flags: JSON_THROW_ON_ERROR);
+            // PHP counts containers from one; an empty container may sit at our maximum value depth.
+            $value = json_decode($json, depth: $this->limits->maxDepth + 2, flags: JSON_THROW_ON_ERROR);
         } catch (JsonException $jsonException) {
             throw new InvalidArgumentException('Invalid JSON: '.$jsonException->getMessage(), $jsonException->getCode(), previous: $jsonException);
         }
@@ -44,14 +48,14 @@ final readonly class CanonicalJson
     public function encode(mixed $value): string
     {
         $json = $this->serialize($value, 0);
-        throw_if(mb_strlen($json, '8bit') > 262144, InvalidArgumentException::class, 'JSON exceeds the 256 KiB payload limit.');
+        throw_if(mb_strlen($json, '8bit') > $this->limits->maxBytes, InvalidArgumentException::class, 'JSON exceeds the '.$this->limits->maxBytes.' byte payload limit.');
 
         return $json;
     }
 
     private function serialize(mixed $value, int $depth): string
     {
-        throw_if($depth > 64, InvalidArgumentException::class, 'JSON nesting exceeds 64 levels.');
+        throw_if($depth > $this->limits->maxDepth, InvalidArgumentException::class, 'JSON nesting exceeds '.$this->limits->maxDepth.' levels.');
 
         if ($value === null) {
             return 'null';
@@ -152,7 +156,9 @@ final readonly class CanonicalJson
 
     private function rejectDuplicateKeys(string $json): void
     {
-        preg_match_all('/"(?:\\\\.|[^"\\\\])*"|[{}\[\],:]|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/u', $json, $matches);
+        // Possessive string matching avoids exhausting PCRE's JIT stack on long strings.
+        $matched = preg_match_all('/"(?:[^"\\\\]++|\\\\.)*+"|[{}\[\],:]|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/u', $json, $matches);
+        throw_if($matched === false, InvalidArgumentException::class, 'JSON token validation failed: '.preg_last_error_msg());
         $stack = [];
 
         foreach ($matches[0] as $token) {

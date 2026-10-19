@@ -1,9 +1,27 @@
 {
+    "$schema": "https://getcomposer.org/schema.json",
     "name": "wtroiano/bounded-json",
     "description": "Bounded JSON canonicalization and schema validation",
+    "homepage": "https://github.com/wtroiano86/bounded-json",
     "type": "library",
-    "version": "0.1.0",
     "license": "MIT",
+    "support": {
+        "issues": "https://github.com/wtroiano86/bounded-json/issues",
+        "source": "https://github.com/wtroiano86/bounded-json",
+        "docs": "https://github.com/wtroiano86/bounded-json#documentation"
+    },
+    "authors": [
+        {
+            "name": "William Troiano"
+        }
+    ],
+    "keywords": [
+        "json",
+        "canonical json",
+        "json schema",
+        "validation",
+        "laravel"
+    ],
     "require": {
         "php": "^8.5.0",
         "ext-mbstring": "*",
@@ -18,24 +36,35 @@
     "autoload": {
         "psr-4": {
             "Wtroiano\\BoundedJson\\": "src/"
-        },
-        "files": [
-            "compatibility.php"
-        ]
+        }
     },
     "autoload-dev": {
         "psr-4": {
             "Wtroiano\\BoundedJson\\Tests\\": "tests/"
         }
     },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Wtroiano\\BoundedJson\\Providers\\BoundedJsonServiceProvider"
+            ]
+        }
+    },
     "scripts": {
         "test": [
+            "@test:metadata",
             "@test:lint",
             "@test:types",
             "@test:type-coverage",
             "@test:coverage"
         ],
         "test:unit": "@php vendor/bin/pest",
+        "test:metadata": "@composer validate --strict",
+        "test:release": "@php .github/scripts/verify-release.php",
+        "test:distribution": [
+            "Composer\\Config::disableProcessTimeout",
+            "sh .github/scripts/test-distribution.sh"
+        ],
         "test:all": "@test",
         "test:lint": "@php vendor/bin/pint --test",
         "lint": "@php vendor/bin/pint",
@@ -46,6 +75,7 @@
     "config": {
         "allow-plugins": {
             "pestphp/pest-plugin": true
-        }
+        },
+        "sort-packages": true
     }
 }
