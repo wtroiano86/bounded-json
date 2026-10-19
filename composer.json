@@ -1,0 +1,51 @@
+{
+    "name": "wtroiano/bounded-json",
+    "description": "Bounded JSON canonicalization and schema validation",
+    "type": "library",
+    "version": "0.1.0",
+    "license": "MIT",
+    "require": {
+        "php": "^8.5.0",
+        "ext-mbstring": "*",
+        "illuminate/support": "^13.34"
+    },
+    "require-dev": {
+        "pestphp/pest": "^5.2.1",
+        "laravel/pint": "^1.32.1",
+        "phpstan/phpstan": "^2.2.16",
+        "pestphp/pest-plugin-type-coverage": "^5.0.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Wtroiano\\BoundedJson\\": "src/"
+        },
+        "files": [
+            "compatibility.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Wtroiano\\BoundedJson\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": [
+            "@test:lint",
+            "@test:types",
+            "@test:type-coverage",
+            "@test:coverage"
+        ],
+        "test:unit": "@php vendor/bin/pest",
+        "test:all": "@test",
+        "test:lint": "@php vendor/bin/pint --test",
+        "lint": "@php vendor/bin/pint",
+        "test:types": "@php vendor/bin/phpstan analyse --memory-limit=1G",
+        "test:coverage": "@php vendor/bin/pest --coverage --exactly=100.0",
+        "test:type-coverage": "@php vendor/bin/pest --type-coverage --min=100"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}
